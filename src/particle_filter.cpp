@@ -24,7 +24,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
-	num_particles = 10;
+	num_particles = 100; // min 4 particles per filter.
 
 	particles.resize(num_particles);
 	weights.resize(num_particles, 1.);
