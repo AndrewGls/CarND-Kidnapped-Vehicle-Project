@@ -24,6 +24,8 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
+	num_particles = 100;
+
 	particles.resize(num_particles);
 	weights.resize(num_particles, 1.);
 
@@ -34,7 +36,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 
 	for (int i = 0; i < num_particles; ++i) {
 		Particle& pa = particles[i];
-		pa.id = 0;
+		pa.id = i;
 		pa.x = dist_x(gen);
 		pa.y = dist_y(gen);
 		pa.theta = dist_theta(gen);
@@ -70,10 +72,17 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 		else {
 			// non-zero yaw rate
 			double curr_theta = pa.theta;
-			pa.theta += yaw_rate * delta_t + N_yaw(gen);
-			pa.x += velocity * (sin(pa.theta  ) - sin(curr_theta)) / yaw_rate + N_x(gen);
-			pa.y += velocity * (cos(curr_theta) - cos(pa.theta  )) / yaw_rate + N_y(gen);
+			pa.theta += yaw_rate * delta_t;
+			pa.x += velocity * (sin(pa.theta  ) - sin(curr_theta)) / yaw_rate;
+			pa.y += velocity * (cos(curr_theta) - cos(pa.theta  )) / yaw_rate;
+
+			pa.x += N_x(gen);
+			pa.y += N_y(gen);
+			pa.theta += N_yaw(gen);
 		}
+
+		// normalize theta in range [-2pi,+2pi]
+		pa.theta = std::fmod(pa.theta, 2.*M_PI);
 	}
 }
 
@@ -88,31 +97,36 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 
 namespace
 {
-	inline void TransfromObservationFromCarSpaceToMapSpace(const Particle& particle, LandmarkObs& observ)
+	inline void TransfromObservationFromCarSpaceToMapSpace(const Particle& particle, const std::vector<LandmarkObs>& observations, std::vector<LandmarkObs>& t_observations)
 	{
 		// |x'| |cos(a) -sin(a) tx| |x|
 		// |y'|=|sin(a)  cos(a) ty|*|y|
 		// |1 | | 0        0     0| |1|
 
-		const double car_obs_x = observ.x;
-		const double car_obs_y = observ.y;
-		observ.x = cos(particle.theta) * car_obs_x - sin(particle.theta) * car_obs_y + particle.x;
-		observ.y = sin(particle.theta) * car_obs_x + cos(particle.theta) * car_obs_y + particle.y;
+		for (int i = 0; i < observations.size(); i++)
+		{
+			const LandmarkObs& obs = observations[i];
+			LandmarkObs& t_obs = t_observations[i];
+			t_obs.id = obs.id;
+			t_obs.x = cos(particle.theta) * obs.x - sin(particle.theta) * obs.y + particle.x;
+			t_obs.y = sin(particle.theta) * obs.x + cos(particle.theta) * obs.y + particle.y;
+		}
 	}
 
-	inline double CalcNormProb(const LandmarkObs& predicted, const LandmarkObs& observation, double sigma_x, double sigma_y)
+	inline double CalcNormProb(const LandmarkObs& predicted, const LandmarkObs& observation, double std_landmark[])
 	{
+		double std_x = std_landmark[0];
+		double std_y = std_landmark[1];
+		assert(FP_ZERO != fpclassify(std_x) && FP_ZERO != fpclassify(std_y));
 		double dx = observation.x - predicted.x;
 		double dy = observation.y - predicted.y;
-		return exp(-dx*dx / (2 * sigma_x*sigma_x) - dy*dy / (2 * sigma_y*sigma_y)) / (2 * M_PI * sigma_x * sigma_y);
+		return exp(-dx*dx / (2 * std_x * std_x) - dy*dy / (2 * std_y * std_y)) / (2 * M_PI * std_x * std_y);
 	}
 
 	void FindAssociation(std::vector<LandmarkObs>& predicted, const std::vector<LandmarkObs>& observations, const Map& map_landmarks)
 	{
+		assert(observations.size());
 		predicted.resize(observations.size());
-
-		if (observations.empty())
-			return;
 
 		std::vector<int> min_dist(observations.size(), INT_MAX);
 		const vector<Map::single_landmark_s>& landmarks = map_landmarks.landmark_list;
@@ -154,25 +168,31 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   for the fact that the map's y-axis actually points downwards.)
 	//   http://planning.cs.uiuc.edu/node99.html
 
-	std::vector<LandmarkObs> predicted;
+	assert(observations.size());
+	if (!observations.size())
+		return;
+
+	std::vector<LandmarkObs> t_observations(observations.size());
+	std::vector<LandmarkObs> predicted(observations.size());
 
 	for (int i = 0; i < num_particles; ++i)
 	{
 		Particle& pa = particles[i];
 
 		// transform observations from car space to map space using particle position and orientation.
-		TransfromObservationFromCarSpaceToMapSpace(pa, observations[i]);
+		TransfromObservationFromCarSpaceToMapSpace(pa, observations, t_observations);
 
 		// find nearest landmarks to observations
-		FindAssociation(predicted, observations, map_landmarks);
+		FindAssociation(predicted, t_observations, map_landmarks);
+		assert(predicted.size());
 
 		// update weight of particle using calculated Multivariate-Gaussian probability
 		double prob = 1.;
-		for (int i = 0; i < predicted.size(); i++) {
-			const LandmarkObs& pred = predicted[i];
-			prob *= CalcNormProb(predicted[i], observations[i], );
+		for (int k = 0; k < predicted.size(); k++) {
+			prob *= CalcNormProb(predicted[k], t_observations[k], std_landmark);
 		}
-		pa.weight *= prob;
+		pa.weight = prob;
+		weights[i] = pa.weight;
 	}
 }
 
@@ -181,6 +201,17 @@ void ParticleFilter::resample() {
 	// NOTE: You may find std::discrete_distribution helpful here.
 	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
 
+	// discrete_distribution does normalization of weights to transform weights into probability.
+	default_random_engine gen;
+	discrete_distribution<int> d(weights.begin(), weights.end());
+
+	std::vector<Particle> new_particles(num_particles);
+
+	for (int i = 0; i < num_particles; i++) {
+		new_particles[i] = particles[d(gen)];
+	}
+
+	particles.swap(new_particles);
 }
 
 void ParticleFilter::write(std::string filename) {

@@ -8,4 +8,12 @@
     <LocalDebuggerWorkingDirectory>C:\Development\Udacity\carnd\Term2\CarND-Kidnapped-Vehicle-Project</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LocalDebuggerWorkingDirectory>C:\Development\Udacity\carnd\Term2\CarND-Kidnapped-Vehicle-Project</LocalDebuggerWorkingDirectory>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LocalDebuggerWorkingDirectory>C:\Development\Udacity\carnd\Term2\CarND-Kidnapped-Vehicle-Project</LocalDebuggerWorkingDirectory>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
 </Project>

@@ -9,3 +9,5 @@ src/solutions
 ide/vs/.vs/
 ide/vs/Debug/
 ide/vs/Release/
+ide/vs/x64/Debug/
+ide/vs/x64/Release/
