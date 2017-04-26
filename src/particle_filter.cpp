@@ -35,7 +35,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	normal_distribution<double> dist_theta(theta, std[2]);
 
 	for (int i = 0; i < num_particles; ++i) {
-		Particle& pa = particles[i];
+		auto& pa = particles[i];
 		pa.id = i;
 		pa.x = dist_x(gen);
 		pa.y = dist_y(gen);
@@ -72,7 +72,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 		}
 		else {
 			// non-zero yaw rate
-			double curr_theta = pa.theta;
+			const auto curr_theta = pa.theta;
 			pa.theta += yaw_rate * delta_t;
 			pa.x += velocity * (sin(pa.theta  ) - sin(curr_theta)) / yaw_rate;
 			pa.y += velocity * (cos(curr_theta) - cos(pa.theta  )) / yaw_rate;
@@ -98,7 +98,9 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 
 namespace
 {
-	inline void TransfromObservationFromCarSpaceToMapSpace(const Particle& particle, const std::vector<LandmarkObs>& observations, std::vector<LandmarkObs>& t_observations)
+	inline void TransfromObservationFromCarSpaceToMapSpace (const Particle& particle,
+															const std::vector<LandmarkObs>& observations,
+															std::vector<LandmarkObs>& t_observations)
 	{
 		// |x'| |cos(a) -sin(a) tx| |x|
 		// |y'|=|sin(a)  cos(a) ty|*|y|
@@ -106,22 +108,31 @@ namespace
 
 		for (int i = 0; i < observations.size(); i++)
 		{
-			const LandmarkObs& obs = observations[i];
-			LandmarkObs& t_obs = t_observations[i];
+			const auto& obs = observations[i];
+			auto& t_obs = t_observations[i];
 			t_obs.id = obs.id;
 			t_obs.x = cos(particle.theta) * obs.x - sin(particle.theta) * obs.y + particle.x;
 			t_obs.y = sin(particle.theta) * obs.x + cos(particle.theta) * obs.y + particle.y;
 		}
 	}
 
-	inline double CalcNormProb(const LandmarkObs& predicted, const LandmarkObs& observation, double std_landmark[])
+	inline double CalcNormProb(const LandmarkObs& predicted, const LandmarkObs& observation, const double std_landmark[])
 	{
-		double std_x = std_landmark[0];
-		double std_y = std_landmark[1];
+		auto std_x = std_landmark[0];
+		auto std_y = std_landmark[1];
 		assert(FP_ZERO != fpclassify(std_x) && FP_ZERO != fpclassify(std_y));
-		double dx = observation.x - predicted.x;
-		double dy = observation.y - predicted.y;
+		auto dx = observation.x - predicted.x;
+		auto dy = observation.y - predicted.y;
 		return exp(-dx*dx / (2 * std_x * std_x) - dy*dy / (2 * std_y * std_y)) / (2 * M_PI * std_x * std_y);
+	}
+
+	inline double CalcNormProb(const std::vector<LandmarkObs>& predicted, const std::vector<LandmarkObs>& observations, const double std_landmark[])
+	{
+		double prob = 1.;
+		for (int k = 0; k < predicted.size(); k++) {
+			prob *= CalcNormProb(predicted[k], observations[k], std_landmark);
+		}
+		return prob;
 	}
 
 	void FindAssociation(std::vector<LandmarkObs>& predicted, const std::vector<LandmarkObs>& observations, const Map& map_landmarks)
@@ -129,23 +140,23 @@ namespace
 		assert(observations.size());
 		predicted.resize(observations.size());
 
-		std::vector<int> min_dist(observations.size(), INT_MAX);
-		const vector<Map::single_landmark_s>& landmarks = map_landmarks.landmark_list;
+		std::vector<double> min_dist(observations.size(), INT_MAX);
+		const auto& landmarks = map_landmarks.landmark_list;
 
 		for (int i = 0; i < landmarks.size(); i++)
 		{
-			const Map::single_landmark_s& lm = landmarks[i];
+			const auto& lm = landmarks[i];
 
 			for (int j = 0; j < observations.size(); j++)
 			{
 				// find nearest landmark to observation
-				const LandmarkObs& obs = observations[j];
-				double distance = dist(lm.x_f, lm.y_f, obs.x, obs.y);
+				const auto& obs = observations[j];
+				auto distance = dist(lm.x_f, lm.y_f, obs.x, obs.y);
 				if (distance < min_dist[j])
 				{
 					min_dist[j] = distance;
 
-					LandmarkObs& pred = predicted[j];
+					auto& pred = predicted[j];
 					pred.id = lm.id_i;
 					pred.x = lm.x_f;
 					pred.y = lm.y_f;
@@ -178,7 +189,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
 	for (int i = 0; i < num_particles; ++i)
 	{
-		Particle& pa = particles[i];
+		auto& pa = particles[i];
 
 		// transform observations from car space to map space using particle position and orientation.
 		TransfromObservationFromCarSpaceToMapSpace(pa, observations, t_observations);
@@ -188,11 +199,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		assert(predicted.size());
 
 		// update weight of particle using calculated Multivariate-Gaussian probability
-		double prob = 1.;
-		for (int k = 0; k < predicted.size(); k++) {
-			prob *= CalcNormProb(predicted[k], t_observations[k], std_landmark);
-		}
-		pa.weight = prob;
+		pa.weight = CalcNormProb(predicted, t_observations, std_landmark);
 		weights[i] = pa.weight;
 	}
 }
