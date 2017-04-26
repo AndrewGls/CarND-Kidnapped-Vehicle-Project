@@ -68,6 +68,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 			assert(false);
 			pa.x += velocity * delta_t * cos(pa.theta) + N_x(gen);
 			pa.y += velocity * delta_t * sin(pa.theta) + N_y(gen);
+			pa.theta += N_yaw(gen);
 		}
 		else {
 			// non-zero yaw rate
