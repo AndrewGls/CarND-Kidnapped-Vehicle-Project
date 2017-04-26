@@ -98,9 +98,9 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 
 namespace
 {
-	inline void TransfromObservationFromCarSpaceToMapSpace (const Particle& particle,
-															const std::vector<LandmarkObs>& observations,
-															std::vector<LandmarkObs>& t_observations)
+	// Transfroms observations from Car-Space to Map-Space relative to particle orientation.
+	inline void TransfromObservationsToMapSpace (const Particle& particle,
+		const std::vector<LandmarkObs>& observations, std::vector<LandmarkObs>& t_observations)
 	{
 		// |x'| |cos(a) -sin(a) tx| |x|
 		// |y'|=|sin(a)  cos(a) ty|*|y|
@@ -126,7 +126,8 @@ namespace
 		return exp(-dx*dx / (2 * std_x * std_x) - dy*dy / (2 * std_y * std_y)) / (2 * M_PI * std_x * std_y);
 	}
 
-	inline double CalcNormProb(const std::vector<LandmarkObs>& predicted, const std::vector<LandmarkObs>& observations, const double std_landmark[])
+	inline double CalcNormProb(const std::vector<LandmarkObs>& predicted,
+		const std::vector<LandmarkObs>& observations, const double std_landmark[])
 	{
 		double prob = 1.;
 		for (int k = 0; k < predicted.size(); k++) {
@@ -192,7 +193,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		auto& pa = particles[i];
 
 		// transform observations from car space to map space using particle position and orientation.
-		TransfromObservationFromCarSpaceToMapSpace(pa, observations, t_observations);
+		TransfromObservationsToMapSpace(pa, observations, t_observations);
 
 		// find nearest landmarks to observations
 		FindAssociation(predicted, t_observations, map_landmarks);
