@@ -116,24 +116,55 @@ namespace
 		}
 	}
 
-	inline double CalcNormProb(const LandmarkObs& predicted, const LandmarkObs& observation, const double std_landmark[])
+	inline double MultVariateNormalDistrib(const LandmarkObs& predicted, const LandmarkObs& observated, const double std_landmark[])
 	{
+		// mean is predicted measurement.
 		auto std_x = std_landmark[0];
 		auto std_y = std_landmark[1];
 		assert(FP_ZERO != fpclassify(std_x) && FP_ZERO != fpclassify(std_y));
-		auto dx = observation.x - predicted.x;
-		auto dy = observation.y - predicted.y;
+		auto dx = observated.x - predicted.x;
+		auto dy = observated.y - predicted.y;
 		return exp(-dx*dx / (2 * std_x * std_x) - dy*dy / (2 * std_y * std_y)) / (2 * M_PI * std_x * std_y);
 	}
 
-	inline double CalcNormProb(const std::vector<LandmarkObs>& predicted,
+	// The function returns the log of probability density function using a multivariate normal distribution function.
+	inline double LogMultVariateNormalDistrib(const LandmarkObs& predicted, const LandmarkObs& observated, const double std_landmark[])
+	{
+		// ln(p(x,y)) = -0.5 * (2*ln(2pi * std_x * std_y) + (x - mean_x)^2/std_x^2 + (y - mean_y)^2/std_y^2 )
+
+		// mean is predicted measurement.
+		auto std_x = std_landmark[0];
+		auto std_y = std_landmark[1];
+		assert(FP_ZERO != fpclassify(std_x) && FP_ZERO != fpclassify(std_y));
+
+		const double coeff = 2. * log(2. * M_PI * std_x * std_y);
+		auto dx = observated.x - predicted.x;
+		auto dy = observated.y - predicted.y;
+		return -0.5 * (coeff + dx*dx / (std_x*std_x) + dy*dy / (std_y*std_y));
+	}
+
+	inline double CalcMeasurementProbability(const std::vector<LandmarkObs>& predicted,
 		const std::vector<LandmarkObs>& observations, const double std_landmark[])
 	{
+		// Calculates how likely a measurement should be.
 		double prob = 1.;
 		for (int k = 0; k < predicted.size(); k++) {
-			prob *= CalcNormProb(predicted[k], observations[k], std_landmark);
+			prob *= MultVariateNormalDistrib(predicted[k], observations[k], std_landmark);
 		}
 		return prob;
+	}
+
+	// The function calculates the probability using log of probability density function to
+	// avoid floating point underflow for very small values of probability.
+	inline double CalcMeasurementProbabilityWithoutUnderflow(const std::vector<LandmarkObs>& predicted,
+		const std::vector<LandmarkObs>& observations, const double std_landmark[])
+	{
+		// Calculates how likely a measurement should be.
+		double log_prob = 0.;
+		for (int k = 0; k < predicted.size(); k++) {
+			log_prob += LogMultVariateNormalDistrib(predicted[k], observations[k], std_landmark);
+		}
+		return exp(log_prob);
 	}
 
 	void FindAssociation(std::vector<LandmarkObs>& predicted, const std::vector<LandmarkObs>& observations, const Map& map_landmarks)
@@ -200,7 +231,8 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		assert(predicted.size());
 
 		// update weight of particle using calculated Multivariate-Gaussian probability
-		pa.weight = CalcNormProb(predicted, t_observations, std_landmark);
+//		pa.weight = CalcMeasurementProbability(predicted, t_observations, std_landmark);
+		pa.weight = CalcMeasurementProbabilityWithoutUnderflow(predicted, t_observations, std_landmark);
 		weights[i] = pa.weight;
 	}
 }
