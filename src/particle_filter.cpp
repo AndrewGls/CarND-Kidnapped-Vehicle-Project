@@ -136,6 +136,7 @@ namespace
 	// The function returns the log of probability density function using a multivariate normal distribution function.
 	inline double LogMultVariateNormalDistrib(const LandmarkObs& predicted, const LandmarkObs& observated, const double std_landmark[])
 	{
+		// Note: sqrt in scale factor in ln() is skipped for speedup. Calculated weights are normalized latter.
 		// ln(p(x,y)) = -0.5 * (2*ln(2pi * std_x * std_y) + (x - mean_x)^2/std_x^2 + (y - mean_y)^2/std_y^2 )
 
 		// mean is predicted measurement.
