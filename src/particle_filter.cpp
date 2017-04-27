@@ -18,6 +18,12 @@
 
 using namespace std;
 
+// If USE_RESAMPLING_WHELL defined, the resamling wheel is used otherwise
+// the discrete_distribution is used for normalization of weights.
+
+//#define USE_RESAMPLING_WHELL
+
+
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	// TODO: Set the number of particles. Initialize all particles to first position (based on estimates of 
 	//   x, y, theta and their uncertainties from GPS) and all weights to 1. 
@@ -237,13 +243,15 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	}
 }
 
+#if !defined(USE_RESAMPLING_WHELL)
+
 void ParticleFilter::resample() {
 	// TODO: Resample particles with replacement with probability proportional to their weight. 
 	// NOTE: You may find std::discrete_distribution helpful here.
 	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
 
 	// discrete_distribution does normalization of weights to transform weights into probability.
-	default_random_engine gen;
+	default_random_engine gen(13);
 	discrete_distribution<int> d(weights.begin(), weights.end());
 
 	std::vector<Particle> new_particles(num_particles);
@@ -254,6 +262,49 @@ void ParticleFilter::resample() {
 
 	particles.swap(new_particles);
 }
+
+#else
+
+void ParticleFilter::resample() {
+	// TODO: Resample particles with replacement with probability proportional to their weight. 
+	// NOTE: You may find std::discrete_distribution helpful here.
+	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
+
+	// get max weight
+	double max_weight = 0.;
+	for (auto it = particles.cbegin(); it != particles.cend(); ++it) {
+		max_weight = max(max_weight, it->weight);
+	}
+
+	// resampling wheel does normalization of weights to transform weights into probability.
+	default_random_engine gen(13);
+	std::uniform_int_distribution<int> ud_start(0, num_particles - 1);
+	std::uniform_real_distribution<double> ud_spin(0, 2. * max_weight);
+
+	std::vector<Particle> new_particles(num_particles);
+
+	// do resampling wheel
+	int index = ud_start(gen);
+	double beta = 0.;
+
+	for (int i = 0; i < num_particles; i++)
+	{
+		beta += ud_spin(gen);
+
+		const auto* pa = &particles[index];
+		while (beta > pa->weight) {
+			beta -= pa->weight;
+			index = ++index % num_particles;
+			pa = &particles[index];
+		}
+
+		new_particles[i] = *pa;
+	}
+
+	particles.swap(new_particles);
+}
+
+#endif
 
 void ParticleFilter::write(std::string filename) {
 	// You don't need to modify this file.
